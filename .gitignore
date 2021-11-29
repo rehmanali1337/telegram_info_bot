@@ -7,3 +7,4 @@ config.py
 session_files
 *.log
 users.db
+*.zip
