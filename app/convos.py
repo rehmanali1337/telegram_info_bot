@@ -19,7 +19,8 @@ async def handle_start(event: events.NewMessage):
         logger.debug(f"User not in the db. Adding now")
         user = await State.bot.get_entity(event.message.peer_id)
         await State.db.add_user(user)
-    return await user_conversation(event)
+    asyncio.create_task(user_conversation(event))
+    # return await user_conversation(event)
 
 
 def _text_from_file(path):
@@ -59,8 +60,8 @@ def arrange_btns(buttons_list: list):
     return btns if len(btns) > 0 else None
 
 
-async def _new_text_message(conv: TelegramClient.conversation, filter_func: callable):
-    return (await conv.wait_event(events.NewMessage(func=filter_func))).text
+async def _new_text_message(conv: TelegramClient.conversation, filter_func: callable, chats=[]):
+    return (await conv.wait_event(events.NewMessage(func=filter_func, chats=chats), timeout=10000000000)).text
     # return r.text
 
 
@@ -69,28 +70,32 @@ async def user_conversation(event: events.NewMessage):
     root_path = "./Tree"
     path = root_path
     text = None
-    async with State.bot.conversation(event.message.peer_id, timeout=10000000000000000) as conv:
+    user_id = event.message.peer_id.user_id
+    async with event.message.client.conversation(user_id, timeout=10000000000000000) as conv:
         while True:
 
             files, folders = _read_path(path)
             if path != root_path:
                 folders.append("Back")
-            text = _text_from_file(f"{path}/{files[0]}")
+            if text is None:
+                text = _text_from_file(f"{path}/{files[0]}")
 
             buttons = arrange_btns([_text_button(text)
                                     for text in folders])
             await conv.send_message(text, buttons=buttons)
-            selected_btn = await _new_text_message(conv, lambda x: x.message.message in folders)
+            selected_btn = await _new_text_message(conv, lambda x: x.message.message in folders, chats=user_id)
             logger.debug(f"Selected button : {selected_btn}")
 
             if selected_btn == "Back":
                 to_remove = path.split("/").pop(-1)
                 path = path.replace(to_remove, '')
+                files, folders = _read_path(path)
+                text = _text_from_file(f"{path}/{files[0]}")
                 continue
 
             files, folders = _read_path(f"{path}/{selected_btn}")
             text = _text_from_file(f"{path}/{selected_btn}/message.txt")
-            await conv.send_message(text)
+            # await conv.send_message(text)
 
             # print(path)
             if len(folders) > 0:
@@ -123,15 +128,16 @@ async def _announce_to_users(message: str):
 
 async def send_announcement(event: events.NewMessage):
     logger.debug("Sending announcement")
-    async with State.bot.conversation(event.message.peer_id) as conv:
+    user_id = event.message.peer_id.user_id
+    async with State.bot.conversation(user_id) as conv:
         buttons_texts = ["Send Announcement"]
         buttons = arrange_btns([_text_button(text)
                                 for text in buttons_texts])
         await conv.send_message("Admin Menu", buttons=buttons)
-        selected_btn = await _new_text_message(conv, lambda x: x.message.message in buttons_texts)
+        selected_btn = await _new_text_message(conv, lambda x: x.message.message in buttons_texts, chats=[user_id])
         if selected_btn == "Send Announcement":
             await conv.send_message("Enter the message you want to send?")
-            text = await _new_text_message(conv, filter_func=None)
+            text = await _new_text_message(conv, filter_func=None, chats=[user_id])
             logger.debug(f"Announcing the text : {text}")
             asyncio.create_task(_announce_to_users(text))
             await conv.send_message("Bot is sending the announcements")

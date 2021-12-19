@@ -20,7 +20,7 @@ proxy = {
 }
 
 bot = TelegramClient(f'{Vars.sessions_dir}/bot',
-                     config.TELEGRAM_API_ID, config.TELEGRAM_API_HASH)
+                     config.TELEGRAM_API_ID, config.TELEGRAM_API_HASH, proxy=proxy)
 
 
 async def add_event_handlers():
